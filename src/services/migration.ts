@@ -30,8 +30,16 @@ const localStorageMigrations: Migration[] = [
         displayOnNewLine: data.displayOnNewLine,
         isHeaderNonFloating: data.isHeaderNonFloating,
         theme: data.theme,
+        plannedHours: 0,
       };
     },
+  },
+  {
+    version: 3,
+    migrate: (data: any) => ({
+      ...data,
+      plannedHours: data.plannedHours ?? 0,
+    }),
   },
 ];
 

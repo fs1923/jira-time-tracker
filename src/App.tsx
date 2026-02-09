@@ -12,7 +12,7 @@ import AddTimelogModal from './components/AddTimelogModal';
 import EditTimelogModal from './components/EditTimelogModal';
 import EditTrackingModal from './components/EditTrackingModal';
 import EditActiveTrackingModal from './components/EditActiveTrackingModal';
-import type { JiraAccount, Settings, ProcessedTimelog, TrackedTicket, JiraTicket, State } from './types/jira';
+import type { JiraAccount, Settings, ProcessedTimelog, TrackedTicket, JiraTicket, State, JiraIssue, JiraWorklog } from './types/jira';
 import { formatDuration } from './utils/time';
 import { extractTextFromAtlassianDocumentFormat } from './utils/jira';
 import useTheme from './hooks/useTheme';
@@ -31,6 +31,32 @@ declare global {
 window.moment = moment;
 window._ = _;
 
+const countWorkingDaysInMonth = (date: moment.Moment): number => {
+  const cursor = date.clone().startOf('month');
+  const end = date.clone().endOf('month');
+  let count = 0;
+  while (cursor.isSameOrBefore(end, 'day')) {
+    if (cursor.isoWeekday() <= 5) {
+      count += 1;
+    }
+    cursor.add(1, 'day');
+  }
+  return count;
+};
+
+const countWorkingDaysFromStartOfMonth = (date: moment.Moment): number => {
+  const cursor = date.clone().startOf('month');
+  const end = date.clone().startOf('day');
+  let count = 0;
+  while (cursor.isSameOrBefore(end, 'day')) {
+    if (cursor.isoWeekday() <= 5) {
+      count += 1;
+    }
+    cursor.add(1, 'day');
+  }
+  return count;
+};
+
 export default function App() {
   const [settings, setSettings] = useLocalStorage<Settings>('jiraTimelogSettings', {
     accounts: [],
@@ -38,6 +64,7 @@ export default function App() {
     displayOnNewLine: false,
     isHeaderNonFloating: false,
     theme: 'system',
+    plannedHours: 0,
   });
 
   const activeAccount = useMemo<JiraAccount | undefined>(
@@ -68,6 +95,7 @@ export default function App() {
   const [editingLog, setEditingLog] = useState<ProcessedTimelog | null>(null);
   const [editingActiveLog, setEditingActiveLog] = useState<TrackedTicket | null>(null);
   const [ticketForAddLog, setTicketForAddLog] = useState<JiraTicket | null>(null);
+  const [monthToDateLogs, setMonthToDateLogs] = useState<Array<{ issue: JiraIssue; worklog: JiraWorklog }>>([]);
   const [editingTrackingInfo, setEditingTrackingInfo] = useState<{
     id: string;
     key: string;
@@ -92,6 +120,32 @@ export default function App() {
   useEffect(() => {
     handleFetchWorklogs();
   }, [handleFetchWorklogs]);
+
+  useEffect(() => {
+    if (!client) {
+      setMonthToDateLogs([]);
+      return;
+    }
+    let isCancelled = false;
+    const start = moment(selectedDate).startOf('month').format('YYYY-MM-DD');
+    const end = moment(selectedDate).format('YYYY-MM-DD');
+    client
+      .getLogsForRange(start, end)
+      .then((data) => {
+        if (!isCancelled) {
+          setMonthToDateLogs(data);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to fetch month-to-date logs:', err);
+        if (!isCancelled) {
+          setMonthToDateLogs([]);
+        }
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [client, selectedDate]);
 
   const timelineData = useMemo(() => {
     const jiraTimelogs = backendData || [];
@@ -229,6 +283,56 @@ export default function App() {
 
     return totalSeconds;
   }, [timelineData.allLogs, selectedDate, currentTime]);
+
+  const workingDaysInSelectedMonth = useMemo(() => countWorkingDaysInMonth(moment(selectedDate)), [selectedDate]);
+  const workingDaysElapsedInSelectedMonth = useMemo(() => countWorkingDaysFromStartOfMonth(moment(selectedDate)), [selectedDate]);
+
+  const plannedDailyHours = useMemo(() => {
+    if (!settings.plannedHours || settings.plannedHours <= 0) return null;
+    if (workingDaysInSelectedMonth <= 0) return null;
+    return settings.plannedHours / workingDaysInSelectedMonth;
+  }, [settings.plannedHours, workingDaysInSelectedMonth]);
+
+  const plannedDailySeconds = useMemo(() => {
+    if (!plannedDailyHours || plannedDailyHours <= 0) return null;
+    return plannedDailyHours * 3600;
+  }, [plannedDailyHours]);
+
+  const plannedMonthToDateSeconds = useMemo(() => {
+    if (!plannedDailyHours || plannedDailyHours <= 0) return null;
+    if (workingDaysElapsedInSelectedMonth <= 0) return null;
+    return plannedDailyHours * workingDaysElapsedInSelectedMonth * 3600;
+  }, [plannedDailyHours, workingDaysElapsedInSelectedMonth]);
+
+  const actualMonthToDateSeconds = useMemo(() => {
+    const startOfRange = moment(selectedDate).startOf('month');
+    const endOfRange = moment(selectedDate).endOf('day');
+    let totalSeconds = 0;
+
+    monthToDateLogs.forEach((log) => {
+      const logStart = moment(log.worklog.started);
+      const logEnd = moment(log.worklog.started).add(log.worklog.timeSpentSeconds, 'second');
+      const effectiveStart = moment.max(logStart, startOfRange);
+      const effectiveEnd = moment.min(logEnd, endOfRange);
+
+      if (effectiveEnd.isAfter(effectiveStart)) {
+        totalSeconds += effectiveEnd.diff(effectiveStart, 'seconds');
+      }
+    });
+
+    Object.values(state.trackedTickets).forEach((tracked) => {
+      const logStart = moment(tracked.startTime);
+      const logEnd = currentTime;
+      const effectiveStart = moment.max(logStart, startOfRange);
+      const effectiveEnd = moment.min(logEnd, endOfRange);
+
+      if (effectiveEnd.isAfter(effectiveStart)) {
+        totalSeconds += effectiveEnd.diff(effectiveStart, 'seconds');
+      }
+    });
+
+    return totalSeconds;
+  }, [monthToDateLogs, selectedDate, currentTime, state.trackedTickets]);
 
   const handleRowClick = useCallback((log: ProcessedTimelog) => {
     setEditingLog(log);
@@ -432,6 +536,9 @@ export default function App() {
             <div className={`max-w-7xl mx-auto z-10 ${settings.isHeaderNonFloating ? '' : 'sticky top-4'}`}>
               <Header
                 totalTrackedTodayInSeconds={totalTrackedTodayInSeconds}
+                plannedDailySeconds={plannedDailySeconds}
+                plannedMonthToDateSeconds={plannedMonthToDateSeconds}
+                actualMonthToDateSeconds={actualMonthToDateSeconds}
                 selectedDate={selectedDate}
                 setSelectedDate={setSelectedDate}
                 setSearchModalOpen={setSearchModalOpen}

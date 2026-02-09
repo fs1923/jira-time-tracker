@@ -4,7 +4,7 @@ import { JiraApiClient } from '../services/jira';
 
 export const JIRA_PROPERTY_KEY = 'com.yrambler2001.jira-tracker';
 
-export const parseState = async (state: string, client: JiraApiClient): Promise<State> => {
+export const parseState = async (state: string | null, client: JiraApiClient): Promise<State> => {
   let parsed: State | null = null;
   try {
     if (state) {

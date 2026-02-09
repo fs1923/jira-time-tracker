@@ -15,6 +15,8 @@ import type {
   JiraProject,
 } from '../types/jira';
 
+type AtlassianDocComment = NonNullable<JiraWorklog['comment']>;
+
 export class JiraApiClient {
   private static instance: JiraApiClient;
 
@@ -69,7 +71,7 @@ export class JiraApiClient {
     }
   }
 
-  async getUserProperty(propertyKey: string): Promise<any> {
+  async getUserProperty<T = string>(propertyKey: string): Promise<T | null> {
     const url = `${this.baseUrl}/rest/api/3/user/properties/${propertyKey}?accountId=${this.myself?.accountId}`;
     try {
       const response = await fetch(url, {
@@ -82,15 +84,15 @@ export class JiraApiClient {
         throw new Error(`Failed to get user property: ${response.status} ${await response.text()}`);
       }
 
-      const data = await response.json();
-      return data.value;
+      const data = (await response.json()) as { value?: T };
+      return data.value ?? null;
     } catch (error) {
       console.error(`Error getting user property '${propertyKey}':`, error);
       throw error;
     }
   }
 
-  async setUserProperty(propertyKey: string, propertyValue: any): Promise<void> {
+  async setUserProperty<T>(propertyKey: string, propertyValue: T): Promise<void> {
     const url = `${this.baseUrl}/rest/api/3/user/properties/${propertyKey}?accountId=${this.myself?.accountId}`;
     try {
       const response = await fetch(url, {
@@ -113,7 +115,11 @@ export class JiraApiClient {
 
   async addWorklog(issueIdOrKey: string, worklog: { started: string; timeSpentSeconds: number; comment?: string }): Promise<JiraWorklog> {
     const url = `${this.baseUrl}/rest/api/3/issue/${issueIdOrKey}/worklog`;
-    const body: any = {
+    const body: {
+      timeSpentSeconds: number;
+      started: string;
+      comment?: AtlassianDocComment;
+    } = {
       timeSpentSeconds: worklog.timeSpentSeconds,
       started: moment(worklog.started).toISOString().replace('Z', '+0000'),
     };
@@ -163,9 +169,13 @@ export class JiraApiClient {
     worklog: { started?: string; timeSpentSeconds?: number; comment?: string },
   ): Promise<JiraWorklog> {
     const url = `${this.baseUrl}/rest/api/3/issue/${issueIdOrKey}/worklog/${worklogId}`;
-    const body: any = {
+    const body: {
+      timeSpentSeconds?: number;
+      started?: string;
+      comment?: AtlassianDocComment;
+    } = {
       timeSpentSeconds: worklog.timeSpentSeconds,
-      started: moment(worklog.started).toISOString().replace('Z', '+0000'),
+      started: worklog.started ? moment(worklog.started).toISOString().replace('Z', '+0000') : undefined,
     };
 
     if (worklog.comment) {
@@ -380,6 +390,42 @@ export class JiraApiClient {
         worklogs: worklogs.map((w) => ({ issue, worklog: w })),
         startOfDay,
         endOfDay,
+      });
+      flattenedWorklogs.push(...filteredLogs);
+    }
+
+    return _.orderBy(flattenedWorklogs, (x) => +moment(x.worklog.started));
+  }
+
+  public async getLogsForRange(startDay: string, endDay: string): Promise<Array<{ issue: JiraIssue; worklog: JiraWorklog }>> {
+    const utcOffset = await this.getServerTimezone();
+    const startDay_ = moment(startDay, 'YYYY-MM-DD', true);
+    const endDay_ = moment(endDay, 'YYYY-MM-DD', true);
+    const startOfRange = moment(startDay_).startOf('day');
+    const endOfRange = moment(endDay_).endOf('day');
+
+    const fetchTimelogStartedBefore: MsEpoch = +moment(endOfRange).add(1, 'day');
+    const fetchTimelogStartedAfter: MsEpoch = +moment(startOfRange).add(-2, 'day');
+
+    const data = await this.searchIssues({
+      utcOffset,
+      fetchTimelogStartedBefore,
+      fetchTimelogStartedAfter,
+    });
+
+    const flattenedWorklogs: { issue: JiraIssue; worklog: JiraWorklog }[] = [];
+    for (const issue of data.issues) {
+      let worklogs = issue.fields.worklog.worklogs ?? [];
+      if (issue.fields.worklog.total > issue.fields.worklog.maxResults) {
+        worklogs = await this.fetchPaginatedWorklogs(issue.key, {
+          fetchTimelogStartedBefore,
+          fetchTimelogStartedAfter,
+        });
+      }
+      const filteredLogs = this.filterWorklogs({
+        worklogs: worklogs.map((w) => ({ issue, worklog: w })),
+        startOfDay: startOfRange,
+        endOfDay: endOfRange,
       });
       flattenedWorklogs.push(...filteredLogs);
     }
