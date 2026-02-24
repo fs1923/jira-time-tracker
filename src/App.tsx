@@ -57,6 +57,19 @@ const countWorkingDaysFromStartOfMonth = (date: moment.Moment): number => {
   return count;
 };
 
+const countWorkingDaysFromDateToEndOfMonth = (date: moment.Moment): number => {
+  const cursor = date.clone().startOf('day');
+  const end = date.clone().endOf('month');
+  let count = 0;
+  while (cursor.isSameOrBefore(end, 'day')) {
+    if (cursor.isoWeekday() <= 5) {
+      count += 1;
+    }
+    cursor.add(1, 'day');
+  }
+  return count;
+};
+
 export default function App() {
   const [settings, setSettings] = useLocalStorage<Settings>('jiraTimelogSettings', {
     accounts: [],
@@ -286,23 +299,7 @@ export default function App() {
 
   const workingDaysInSelectedMonth = useMemo(() => countWorkingDaysInMonth(moment(selectedDate)), [selectedDate]);
   const workingDaysElapsedInSelectedMonth = useMemo(() => countWorkingDaysFromStartOfMonth(moment(selectedDate)), [selectedDate]);
-
-  const plannedDailyHours = useMemo(() => {
-    if (!settings.plannedHours || settings.plannedHours <= 0) return null;
-    if (workingDaysInSelectedMonth <= 0) return null;
-    return settings.plannedHours / workingDaysInSelectedMonth;
-  }, [settings.plannedHours, workingDaysInSelectedMonth]);
-
-  const plannedDailySeconds = useMemo(() => {
-    if (!plannedDailyHours || plannedDailyHours <= 0) return null;
-    return plannedDailyHours * 3600;
-  }, [plannedDailyHours]);
-
-  const plannedMonthToDateSeconds = useMemo(() => {
-    if (!plannedDailyHours || plannedDailyHours <= 0) return null;
-    if (workingDaysElapsedInSelectedMonth <= 0) return null;
-    return plannedDailyHours * workingDaysElapsedInSelectedMonth * 3600;
-  }, [plannedDailyHours, workingDaysElapsedInSelectedMonth]);
+  const workingDaysRemainingInSelectedMonth = useMemo(() => countWorkingDaysFromDateToEndOfMonth(moment(selectedDate)), [selectedDate]);
 
   const actualMonthToDateSeconds = useMemo(() => {
     const startOfRange = moment(selectedDate).startOf('month');
@@ -333,6 +330,57 @@ export default function App() {
 
     return totalSeconds;
   }, [monthToDateLogs, selectedDate, currentTime, state.trackedTickets]);
+
+  const actualMonthBeforeSelectedDateSeconds = useMemo(() => {
+    const startOfRange = moment(selectedDate).startOf('month');
+    const endOfRange = moment(selectedDate).startOf('day');
+    let totalSeconds = 0;
+
+    monthToDateLogs.forEach((log) => {
+      const logStart = moment(log.worklog.started);
+      const logEnd = moment(log.worklog.started).add(log.worklog.timeSpentSeconds, 'second');
+      const effectiveStart = moment.max(logStart, startOfRange);
+      const effectiveEnd = moment.min(logEnd, endOfRange);
+
+      if (effectiveEnd.isAfter(effectiveStart)) {
+        totalSeconds += effectiveEnd.diff(effectiveStart, 'seconds');
+      }
+    });
+
+    Object.values(state.trackedTickets).forEach((tracked) => {
+      const logStart = moment(tracked.startTime);
+      const logEnd = currentTime;
+      const effectiveStart = moment.max(logStart, startOfRange);
+      const effectiveEnd = moment.min(logEnd, endOfRange);
+
+      if (effectiveEnd.isAfter(effectiveStart)) {
+        totalSeconds += effectiveEnd.diff(effectiveStart, 'seconds');
+      }
+    });
+
+    return totalSeconds;
+  }, [monthToDateLogs, selectedDate, currentTime, state.trackedTickets]);
+
+  const plannedMonthSeconds = useMemo(() => {
+    if (!settings.plannedHours || settings.plannedHours <= 0) return null;
+    return settings.plannedHours * 3600;
+  }, [settings.plannedHours]);
+
+  const plannedDailySeconds = useMemo(() => {
+    if (!plannedMonthSeconds || plannedMonthSeconds <= 0) return null;
+    if (workingDaysRemainingInSelectedMonth <= 0) return null;
+
+    const remainingSeconds = Math.max(plannedMonthSeconds - actualMonthBeforeSelectedDateSeconds, 0);
+    return remainingSeconds / workingDaysRemainingInSelectedMonth;
+  }, [plannedMonthSeconds, actualMonthBeforeSelectedDateSeconds, workingDaysRemainingInSelectedMonth]);
+
+  const plannedMonthToDateSeconds = useMemo(() => {
+    if (!plannedMonthSeconds || plannedMonthSeconds <= 0) return null;
+    if (workingDaysInSelectedMonth <= 0) return null;
+    if (workingDaysElapsedInSelectedMonth <= 0) return null;
+
+    return (plannedMonthSeconds * workingDaysElapsedInSelectedMonth) / workingDaysInSelectedMonth;
+  }, [plannedMonthSeconds, workingDaysInSelectedMonth, workingDaysElapsedInSelectedMonth]);
 
   const handleRowClick = useCallback((log: ProcessedTimelog) => {
     setEditingLog(log);
