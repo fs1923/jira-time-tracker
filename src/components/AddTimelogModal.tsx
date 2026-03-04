@@ -2,6 +2,7 @@ import React from 'react';
 import moment from 'moment';
 import Modal from './Modal';
 import TimelogForm from './TimelogForm';
+import type { TimelogFormSaveData } from './TimelogForm';
 import type { JiraTicket } from '../types/jira';
 import { JiraApiClient } from '../services/jira';
 
@@ -23,7 +24,7 @@ const AddTimelogModal: React.FC<AddTimelogModalProps> = ({ isOpen, onClose, tick
     description: '',
   };
 
-  const handleSave = async (data: any) => {
+  const handleSave = async (data: TimelogFormSaveData) => {
     try {
       await client.addWorklog(ticket.key, data);
       onUpdate();

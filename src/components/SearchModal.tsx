@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Modal from './Modal';
-import type { JiraTicket, JiraProject } from '../types/jira';
+import type { JiraTicket } from '../types/jira';
 import { StarIcon, SettingsIcon } from './Icons';
 import { JiraApiClient } from '../services/jira';
 
@@ -189,7 +189,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, onAddLog, on
     </div>
   );
 
-  const renderRadioGroup = (options: { value: string; label: string }[], selectedValue: string, onChange: (value: any) => void, name: string) => (
+  const renderRadioGroup = (options: { value: string; label: string }[], selectedValue: string, onChange: (value: string) => void, name: string) => (
     <div className="flex flex-wrap items-start gap-x-4 gap-y-2 py-2 text-sm text-gray-700 dark:text-gray-300">
       {options.map(({ value, label }) => (
         <label key={value} className="flex items-center gap-2 cursor-pointer">

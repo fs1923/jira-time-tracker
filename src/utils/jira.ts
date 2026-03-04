@@ -31,25 +31,35 @@ export const stringifyState = (state: State): string => {
   return JSON.stringify(stateToStore);
 };
 
-export const extractTextFromAtlassianDocumentFormat = (node: any): string => {
-  if (!node) return '';
+interface AtlassianDocumentNode {
+  type?: string;
+  text?: string;
+  attrs?: {
+    url?: string;
+  };
+  content?: AtlassianDocumentNode[];
+}
 
-  switch (node.type) {
+export const extractTextFromAtlassianDocumentFormat = (node: unknown): string => {
+  if (!node || typeof node !== 'object') return '';
+  const documentNode = node as AtlassianDocumentNode;
+
+  switch (documentNode.type) {
     case 'text':
-      return node.text || '';
+      return documentNode.text || '';
     case 'inlineCard':
-      return node.attrs.url || '';
+      return documentNode.attrs?.url || '';
     case 'paragraph':
     case 'doc':
     case 'blockquote':
     case 'heading':
-      return (node.content || []).map(extractTextFromAtlassianDocumentFormat).join('');
+      return (documentNode.content || []).map(extractTextFromAtlassianDocumentFormat).join('');
     case 'bulletList':
     case 'orderedList':
-      return (node.content || []).map(extractTextFromAtlassianDocumentFormat).join('\n');
+      return (documentNode.content || []).map(extractTextFromAtlassianDocumentFormat).join('\n');
     case 'listItem':
-      return `- ${(node.content || []).map(extractTextFromAtlassianDocumentFormat).join('')}\n`;
+      return `- ${(documentNode.content || []).map(extractTextFromAtlassianDocumentFormat).join('')}\n`;
     default:
-      return (node.content || []).map(extractTextFromAtlassianDocumentFormat).join('');
+      return (documentNode.content || []).map(extractTextFromAtlassianDocumentFormat).join('');
   }
 };

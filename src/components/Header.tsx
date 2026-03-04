@@ -1,7 +1,7 @@
 import React from 'react';
 import moment from 'moment';
 import { SettingsIcon, SearchIcon } from './Icons';
-import Timeline from './Timeline';
+import Timeline, { type TimelineData } from './Timeline';
 import type { ProcessedTimelog, JiraAccount } from '../types/jira';
 import { formatTotalSeconds } from '../utils/time';
 
@@ -15,7 +15,7 @@ interface HeaderProps {
   setSearchModalOpen: (isOpen: boolean) => void;
   setSettingsOpen: (isOpen: boolean) => void;
   // Props for Timeline
-  timelineData: any;
+  timelineData: TimelineData;
   hoveredLogId: string | null;
   setHoveredLogId: (id: string | null) => void;
   handleRowClick: (log: ProcessedTimelog) => void;
@@ -43,7 +43,7 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const totalForDayDisplay =
-    plannedDailySeconds && plannedDailySeconds > 0
+    plannedDailySeconds !== null
       ? `${formatTotalSeconds(totalTrackedTodayInSeconds)} / ${formatTotalSeconds(plannedDailySeconds)}`
       : formatTotalSeconds(totalTrackedTodayInSeconds);
 
@@ -72,11 +72,11 @@ const Header: React.FC<HeaderProps> = ({
         </div>
         <div className="flex items-end gap-4">
           <div className="text-right">
-            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Month Plan (to date)</label>
+            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Month Plan (to date, all accounts)</label>
             <div className="p-2 font-bold text-lg text-gray-800 dark:text-white">{monthToDatePlanDisplay}</div>
           </div>
           <div className="text-right">
-            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Total for Day</label>
+            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Total for Day (all accounts)</label>
             <div className={totalForDayClassName}>{totalForDayDisplay}</div>
           </div>
           <div className="overflow-hidden">
