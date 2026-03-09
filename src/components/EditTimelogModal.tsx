@@ -5,6 +5,7 @@ import type { TimelogFormSaveData } from './TimelogForm';
 import type { ProcessedTimelog } from '../types/jira';
 import { JiraApiClient } from '../services/jira';
 import { formatSecondsToDuration } from '../utils/time';
+import useDebounceClick from '../hooks/useDebounceClick';
 
 interface EditTimelogModalProps {
   isOpen: boolean;
@@ -16,6 +17,8 @@ interface EditTimelogModalProps {
 }
 
 const EditTimelogModal: React.FC<EditTimelogModalProps> = ({ isOpen, onClose, log, client, onUpdate, onDeleteRequest }) => {
+  const { isWaitingForPreviousClickAction, isWaitingForPreviousClickActionRef, onClickActionStarted, onClickActionCompleted } = useDebounceClick();
+
   if (!log || !client) return null;
 
   const initialData = {
@@ -26,13 +29,17 @@ const EditTimelogModal: React.FC<EditTimelogModalProps> = ({ isOpen, onClose, lo
   };
 
   const handleSave = async (data: TimelogFormSaveData) => {
+    if (isWaitingForPreviousClickActionRef.current) return;
+    onClickActionStarted();
     try {
       await client.updateWorklog(log.issue.key, log.id, data);
       onUpdate();
     } catch (error) {
       console.error('Failed to update worklog:', error);
+      onClickActionCompleted();
     }
     onClose();
+    setTimeout(() => onClickActionCompleted(), 1000 /* waiting for close modal animation */);
   };
 
   const handleDelete = () => {
@@ -42,7 +49,13 @@ const EditTimelogModal: React.FC<EditTimelogModalProps> = ({ isOpen, onClose, lo
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Edit Timelog for ${log.issue.key}`}>
-      <TimelogForm initialData={initialData} onSave={handleSave} onDelete={handleDelete} buttonText="Update Timelog" />
+      <TimelogForm
+        initialData={initialData}
+        onSave={handleSave}
+        onDelete={handleDelete}
+        buttonText="Update Timelog"
+        isSubmitting={isWaitingForPreviousClickAction}
+      />
     </Modal>
   );
 };

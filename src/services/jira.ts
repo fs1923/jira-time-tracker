@@ -124,23 +124,21 @@ export class JiraApiClient {
       started: moment(worklog.started).toISOString().replace('Z', '+0000'),
     };
 
-    if (worklog.comment) {
-      body.comment = {
-        type: 'doc',
-        version: 1,
-        content: [
-          {
-            type: 'paragraph',
-            content: [
-              {
-                type: 'text',
-                text: worklog.comment,
-              },
-            ],
-          },
-        ],
-      };
-    }
+    body.comment = {
+      type: 'doc',
+      version: 1,
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: worklog.comment || '',
+            },
+          ],
+        },
+      ],
+    };
 
     try {
       const response = await fetch(url, {
@@ -178,23 +176,21 @@ export class JiraApiClient {
       started: worklog.started ? moment(worklog.started).toISOString().replace('Z', '+0000') : undefined,
     };
 
-    if (worklog.comment) {
-      body.comment = {
-        type: 'doc',
-        version: 1,
-        content: [
-          {
-            type: 'paragraph',
-            content: [
-              {
-                type: 'text',
-                text: worklog.comment,
-              },
-            ],
-          },
-        ],
-      };
-    }
+    body.comment = {
+      type: 'doc',
+      version: 1,
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: worklog.comment || '',
+            },
+          ],
+        },
+      ],
+    };
 
     try {
       const response = await fetch(url, {
