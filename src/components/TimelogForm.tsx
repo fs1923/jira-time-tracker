@@ -12,10 +12,16 @@ interface TimelogFormProps {
     durationString: string;
     description: string;
   };
-  onSave: (data: any) => void;
+  onSave: (data: TimelogFormSaveData) => void;
   onDelete?: () => void;
   buttonText: string;
   isSubmitting?: boolean;
+}
+
+export interface TimelogFormSaveData {
+  started: string;
+  timeSpentSeconds: number;
+  comment: string;
 }
 
 const TimelogForm: React.FC<TimelogFormProps> = ({ initialData, onSave, onDelete, buttonText, isSubmitting = false }) => {

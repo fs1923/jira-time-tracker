@@ -1,5 +1,3 @@
-import type { Context } from "@netlify/edge-functions";
-
 const matchURL = (url: string) => {
   // const url = "https://jira.abc.me/proxy/ab-cd_ef/rest/api/3/myself";
   const regex = /\/proxy\/([^/]+)(\/rest\/.*)/;
@@ -13,7 +11,7 @@ const matchURL = (url: string) => {
   }
 };
 
-export default async (request: Request, context: Context) => {
+export default async (request: Request) => {
   const targetUrl = matchURL(request.url);
 
   // Create a new request to the target URL

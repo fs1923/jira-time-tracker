@@ -108,7 +108,7 @@ export interface JiraTimelog {
   end_date: string;
   jira_ticket_id: string;
   jira_ticket_name: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface ProcessedTimelog extends JiraTimelog {
@@ -139,6 +139,7 @@ export interface Settings {
   displayOnNewLine: boolean;
   isHeaderNonFloating: boolean;
   theme: Theme;
+  plannedHours: number;
   version?: number;
 }
 

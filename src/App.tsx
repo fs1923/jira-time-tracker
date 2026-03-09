@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import _ from 'lodash';
 import moment from 'moment';
 import useJira from './hooks/useJira';
@@ -12,32 +12,61 @@ import AddTimelogModal from './components/AddTimelogModal';
 import EditTimelogModal from './components/EditTimelogModal';
 import EditTrackingModal from './components/EditTrackingModal';
 import EditActiveTrackingModal from './components/EditActiveTrackingModal';
-import type { JiraAccount, Settings, ProcessedTimelog, TrackedTicket, JiraTicket, State } from './types/jira';
+import type { TimelineData } from './components/Timeline';
+import type { JiraAccount, Settings, ProcessedTimelog, TrackedTicket, JiraTicket, State, JiraIssue, JiraWorklog } from './types/jira';
 import { formatDuration } from './utils/time';
 import { extractTextFromAtlassianDocumentFormat } from './utils/jira';
 import useTheme from './hooks/useTheme';
 import { randomUUID } from './utils/uuid';
+import { JiraApiClient } from './services/jira';
 
 // Makes sure global libraries are available for debugging if needed
 declare global {
   interface Window {
-    moment: any;
-    _: any;
-    client: any;
-    backendData: any;
+    moment: typeof moment;
+    _: typeof _;
+    client: JiraApiClient | null;
+    backendData: Array<{ issue: JiraIssue; worklog: JiraWorklog }> | undefined;
     clearState: () => void;
   }
 }
 window.moment = moment;
 window._ = _;
 
+const countWorkingDaysFromDateToEndOfMonth = (date: moment.Moment): number => {
+  const cursor = date.clone().startOf('day');
+  const end = date.clone().endOf('month');
+  let count = 0;
+  while (cursor.isSameOrBefore(end, 'day')) {
+    if (cursor.isoWeekday() <= 5) {
+      count += 1;
+    }
+    cursor.add(1, 'day');
+  }
+  return count;
+};
+
+const getSecondsWithinRange = (logStart: moment.Moment, logEnd: moment.Moment, rangeStart: moment.Moment, rangeEnd: moment.Moment): number => {
+  const effectiveStart = moment.max(logStart, rangeStart);
+  const effectiveEnd = moment.min(logEnd, rangeEnd);
+
+  if (!effectiveEnd.isAfter(effectiveStart)) {
+    return 0;
+  }
+
+  return effectiveEnd.diff(effectiveStart, 'seconds');
+};
+
 export default function App() {
+  type JiraLogEntry = { issue: JiraIssue; worklog: JiraWorklog };
+
   const [settings, setSettings] = useLocalStorage<Settings>('jiraTimelogSettings', {
     accounts: [],
     activeAccount: '',
     displayOnNewLine: false,
     isHeaderNonFloating: false,
     theme: 'system',
+    plannedHours: 0,
   });
 
   const activeAccount = useMemo<JiraAccount | undefined>(
@@ -68,6 +97,8 @@ export default function App() {
   const [editingLog, setEditingLog] = useState<ProcessedTimelog | null>(null);
   const [editingActiveLog, setEditingActiveLog] = useState<TrackedTicket | null>(null);
   const [ticketForAddLog, setTicketForAddLog] = useState<JiraTicket | null>(null);
+  const [allAccountsDayLogs, setAllAccountsDayLogs] = useState<JiraLogEntry[]>([]);
+  const [allAccountsMonthToDateLogs, setAllAccountsMonthToDateLogs] = useState<JiraLogEntry[]>([]);
   const [editingTrackingInfo, setEditingTrackingInfo] = useState<{
     id: string;
     key: string;
@@ -75,6 +106,7 @@ export default function App() {
     startTime: string;
     workDescription: string;
   } | null>(null);
+  const multiAccountClientCache = useRef<Map<string, Promise<JiraApiClient>>>(new Map());
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -93,9 +125,61 @@ export default function App() {
     handleFetchWorklogs();
   }, [handleFetchWorklogs]);
 
-  const timelineData = useMemo(() => {
-    const jiraTimelogs = backendData || [];
-    const logsWithDates: ProcessedTimelog[] = jiraTimelogs.map((log: any) => {
+  const getClientForAccount = useCallback((account: JiraAccount) => {
+    const cacheKey = `${account.id}:${account.email}:${account.jiraSubdomain}:${account.jiraToken}`;
+    const cached = multiAccountClientCache.current.get(cacheKey);
+    if (cached) return cached;
+
+    const clientPromise = JiraApiClient.initialize({
+      email: account.email,
+      apiToken: account.jiraToken,
+      jiraBaseUrl: account.jiraSubdomain,
+    }).catch((error) => {
+      multiAccountClientCache.current.delete(cacheKey);
+      throw error;
+    });
+
+    multiAccountClientCache.current.set(cacheKey, clientPromise);
+    return clientPromise;
+  }, []);
+
+  useEffect(() => {
+    const accountsWithCredentials = settings.accounts.filter((account) => account.email && account.jiraToken && account.jiraSubdomain);
+    if (accountsWithCredentials.length === 0) {
+      setAllAccountsDayLogs([]);
+      setAllAccountsMonthToDateLogs([]);
+      return;
+    }
+
+    let isCancelled = false;
+    const day = moment(selectedDate).format('YYYY-MM-DD');
+    const startOfMonth = moment(selectedDate).startOf('month').format('YYYY-MM-DD');
+
+    Promise.all(
+      accountsWithCredentials.map(async (account) => {
+        try {
+          const accountClient = await getClientForAccount(account);
+          const [dayLogs, monthToDateLogs] = await Promise.all([accountClient.getLogsForDay(day), accountClient.getLogsForRange(startOfMonth, day)]);
+          return { dayLogs, monthToDateLogs };
+        } catch (error) {
+          console.error(`Failed to fetch aggregated logs for account '${account.jiraSubdomain}':`, error);
+          return { dayLogs: [], monthToDateLogs: [] };
+        }
+      }),
+    ).then((results) => {
+      if (isCancelled) return;
+      setAllAccountsDayLogs(results.flatMap((result) => result.dayLogs));
+      setAllAccountsMonthToDateLogs(results.flatMap((result) => result.monthToDateLogs));
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [settings.accounts, selectedDate, getClientForAccount]);
+
+  const timelineData = useMemo<TimelineData>(() => {
+    const jiraTimelogs: JiraLogEntry[] = backendData || [];
+    const logsWithDates: ProcessedTimelog[] = jiraTimelogs.map((log: JiraLogEntry) => {
       const start = moment(log.worklog.started);
       const end = moment(log.worklog.started).add(log.worklog.timeSpentSeconds, 'second');
       return {
@@ -215,20 +299,74 @@ export default function App() {
     const endOfDay = moment(selectedDate).endOf('day');
     let totalSeconds = 0;
 
-    timelineData.allLogs.forEach((log) => {
-      const logStart = log.startDateMoment;
-      const logEnd = log.isTracking ? currentTime : (log as ProcessedTimelog).endDateMoment;
+    allAccountsDayLogs.forEach((log) => {
+      const logStart = moment(log.worklog.started);
+      const logEnd = moment(log.worklog.started).add(log.worklog.timeSpentSeconds, 'second');
+      totalSeconds += getSecondsWithinRange(logStart, logEnd, startOfDay, endOfDay);
+    });
 
-      const effectiveStart = moment.max(logStart, startOfDay);
-      const effectiveEnd = moment.min(logEnd, endOfDay);
-
-      if (effectiveEnd.isAfter(effectiveStart)) {
-        totalSeconds += effectiveEnd.diff(effectiveStart, 'seconds');
-      }
+    Object.values(state.trackedTickets).forEach((tracked) => {
+      const logStart = moment(tracked.startTime);
+      totalSeconds += getSecondsWithinRange(logStart, currentTime, startOfDay, endOfDay);
     });
 
     return totalSeconds;
-  }, [timelineData.allLogs, selectedDate, currentTime]);
+  }, [allAccountsDayLogs, selectedDate, currentTime, state.trackedTickets]);
+
+  const workingDaysRemainingInSelectedMonth = useMemo(() => countWorkingDaysFromDateToEndOfMonth(moment(selectedDate)), [selectedDate]);
+  const isSelectedDateWeekend = useMemo(() => moment(selectedDate).isoWeekday() > 5, [selectedDate]);
+
+  const actualMonthToDateSeconds = useMemo(() => {
+    const startOfRange = moment(selectedDate).startOf('month');
+    const endOfRange = moment(selectedDate).endOf('day');
+    let totalSeconds = 0;
+
+    allAccountsMonthToDateLogs.forEach((log) => {
+      const logStart = moment(log.worklog.started);
+      const logEnd = moment(log.worklog.started).add(log.worklog.timeSpentSeconds, 'second');
+      totalSeconds += getSecondsWithinRange(logStart, logEnd, startOfRange, endOfRange);
+    });
+
+    Object.values(state.trackedTickets).forEach((tracked) => {
+      const logStart = moment(tracked.startTime);
+      totalSeconds += getSecondsWithinRange(logStart, currentTime, startOfRange, endOfRange);
+    });
+
+    return totalSeconds;
+  }, [allAccountsMonthToDateLogs, selectedDate, currentTime, state.trackedTickets]);
+
+  const actualMonthBeforeSelectedDateSeconds = useMemo(() => {
+    const startOfRange = moment(selectedDate).startOf('month');
+    const endOfRange = moment(selectedDate).startOf('day');
+    let totalSeconds = 0;
+
+    allAccountsMonthToDateLogs.forEach((log) => {
+      const logStart = moment(log.worklog.started);
+      const logEnd = moment(log.worklog.started).add(log.worklog.timeSpentSeconds, 'second');
+      totalSeconds += getSecondsWithinRange(logStart, logEnd, startOfRange, endOfRange);
+    });
+
+    Object.values(state.trackedTickets).forEach((tracked) => {
+      const logStart = moment(tracked.startTime);
+      totalSeconds += getSecondsWithinRange(logStart, currentTime, startOfRange, endOfRange);
+    });
+
+    return totalSeconds;
+  }, [allAccountsMonthToDateLogs, selectedDate, currentTime, state.trackedTickets]);
+
+  const plannedMonthSeconds = useMemo(() => {
+    if (!settings.plannedHours || settings.plannedHours <= 0) return null;
+    return settings.plannedHours * 3600;
+  }, [settings.plannedHours]);
+
+  const plannedDailySeconds = useMemo(() => {
+    if (!plannedMonthSeconds || plannedMonthSeconds <= 0) return null;
+    if (isSelectedDateWeekend) return 0;
+    if (workingDaysRemainingInSelectedMonth <= 0) return 0;
+
+    const remainingSeconds = Math.max(plannedMonthSeconds - actualMonthBeforeSelectedDateSeconds, 0);
+    return remainingSeconds / workingDaysRemainingInSelectedMonth;
+  }, [plannedMonthSeconds, actualMonthBeforeSelectedDateSeconds, workingDaysRemainingInSelectedMonth, isSelectedDateWeekend]);
 
   const handleRowClick = useCallback((log: ProcessedTimelog) => {
     setEditingLog(log);
@@ -432,6 +570,9 @@ export default function App() {
             <div className={`max-w-7xl mx-auto z-10 ${settings.isHeaderNonFloating ? '' : 'sticky top-4'}`}>
               <Header
                 totalTrackedTodayInSeconds={totalTrackedTodayInSeconds}
+                plannedDailySeconds={plannedDailySeconds}
+                plannedMonthSeconds={plannedMonthSeconds}
+                actualMonthToDateSeconds={actualMonthToDateSeconds}
                 selectedDate={selectedDate}
                 setSelectedDate={setSelectedDate}
                 setSearchModalOpen={setSearchModalOpen}

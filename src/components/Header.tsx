@@ -1,18 +1,21 @@
 import React from 'react';
 import moment from 'moment';
 import { SettingsIcon, SearchIcon } from './Icons';
-import Timeline from './Timeline';
+import Timeline, { type TimelineData } from './Timeline';
 import type { ProcessedTimelog, JiraAccount } from '../types/jira';
 import { formatTotalSeconds } from '../utils/time';
 
 interface HeaderProps {
   totalTrackedTodayInSeconds: number;
+  plannedDailySeconds: number | null;
+  plannedMonthSeconds: number | null;
+  actualMonthToDateSeconds: number;
   selectedDate: Date;
   setSelectedDate: (date: Date) => void;
   setSearchModalOpen: (isOpen: boolean) => void;
   setSettingsOpen: (isOpen: boolean) => void;
   // Props for Timeline
-  timelineData: any;
+  timelineData: TimelineData;
   hoveredLogId: string | null;
   setHoveredLogId: (id: string | null) => void;
   handleRowClick: (log: ProcessedTimelog) => void;
@@ -21,6 +24,9 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({
   totalTrackedTodayInSeconds,
+  plannedDailySeconds,
+  plannedMonthSeconds,
+  actualMonthToDateSeconds,
   selectedDate,
   setSelectedDate,
   setSearchModalOpen,
@@ -36,6 +42,24 @@ const Header: React.FC<HeaderProps> = ({
     return moment(date).format('YYYY-MM-DD');
   };
 
+  const totalForDayDisplay =
+    plannedDailySeconds !== null
+      ? `${formatTotalSeconds(totalTrackedTodayInSeconds)} / ${formatTotalSeconds(plannedDailySeconds)}`
+      : formatTotalSeconds(totalTrackedTodayInSeconds);
+
+  const monthToDatePlanDisplay =
+    plannedMonthSeconds && plannedMonthSeconds > 0
+      ? `${formatTotalSeconds(actualMonthToDateSeconds)} / ${formatTotalSeconds(plannedMonthSeconds)}`
+      : formatTotalSeconds(actualMonthToDateSeconds);
+
+  const isPlanMet = plannedDailySeconds !== null && plannedDailySeconds > 0 && totalTrackedTodayInSeconds >= plannedDailySeconds;
+  const totalForDayClassName = [
+    'p-2 font-bold text-lg',
+    isPlanMet ? 'text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 rounded-md' : 'text-gray-800 dark:text-white',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
       <div className="flex justify-between items-start sm:items-center mb-6 border-b dark:border-gray-700 pb-4">
@@ -48,8 +72,12 @@ const Header: React.FC<HeaderProps> = ({
         </div>
         <div className="flex items-end gap-4">
           <div className="text-right">
-            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Total for Day</label>
-            <div className="p-2 font-bold text-lg text-gray-800 dark:text-white">{formatTotalSeconds(totalTrackedTodayInSeconds)}</div>
+            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Month Plan (to date, all accounts)</label>
+            <div className="p-2 font-bold text-lg text-gray-800 dark:text-white">{monthToDatePlanDisplay}</div>
+          </div>
+          <div className="text-right">
+            <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Total for Day (all accounts)</label>
+            <div className={totalForDayClassName}>{totalForDayDisplay}</div>
           </div>
           <div className="overflow-hidden">
             <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Select Date</label>

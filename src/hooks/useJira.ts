@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import moment from 'moment';
 import { JiraApiClient } from '../services/jira';
-import type { State } from '../types/jira';
+import type { JiraAccount, JiraIssue, JiraWorklog, State } from '../types/jira';
 import { JIRA_PROPERTY_KEY, parseState, stringifyState } from '../utils/jira';
 
 type StateUpdater = (currentState: State) => State;
+type JiraLogEntry = { issue: JiraIssue; worklog: JiraWorklog };
 
 const updateJiraStateAtomically = async (client: JiraApiClient, updater: StateUpdater): Promise<State> => {
   try {
@@ -24,7 +25,7 @@ const updateJiraStateAtomically = async (client: JiraApiClient, updater: StateUp
 const useJira = (activeAccount: JiraAccount | undefined) => {
   const [client, setClient] = useState<JiraApiClient | null>(null);
   const [state, setState] = useState<State>({ trackedTickets: {}, starredTickets: [], isDefault: true });
-  const [backendData, setBackendData] = useState<any>(undefined);
+  const [backendData, setBackendData] = useState<JiraLogEntry[] | undefined>(undefined);
 
   useEffect(() => {
     if (!activeAccount?.email || !activeAccount?.jiraToken || !activeAccount?.jiraSubdomain) return;

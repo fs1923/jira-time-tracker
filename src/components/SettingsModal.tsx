@@ -13,25 +13,31 @@ interface SettingsModalProps {
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings, setSettings }) => {
   const [localSettings, setLocalSettings] = useState<Settings | null>(settings);
+  const [plannedHoursInput, setPlannedHoursInput] = useState<string>(settings.plannedHours ? String(settings.plannedHours) : '');
 
   useEffect(() => {
     if (isOpen) {
       setLocalSettings(JSON.parse(JSON.stringify(settings)));
+      setPlannedHoursInput(settings.plannedHours ? String(settings.plannedHours) : '');
     }
   }, [settings, isOpen]);
 
   const handleSave = () => {
     if (localSettings) {
-      setSettings(localSettings);
+      const parsedPlannedHours = plannedHoursInput.trim() === '' ? 0 : Number(plannedHoursInput);
+      setSettings({
+        ...localSettings,
+        plannedHours: Number.isFinite(parsedPlannedHours) && parsedPlannedHours >= 0 ? parsedPlannedHours : 0,
+      });
       onClose();
     }
   };
-  const handleAccountChange = (field: keyof JiraAccount, value: any) => {
+  const handleAccountChange = <K extends keyof JiraAccount>(field: K, value: JiraAccount[K]) => {
     if (!localSettings) return;
     const newAccounts = localSettings.accounts.map((acc) => (acc.id === localSettings.activeAccount ? { ...acc, [field]: value } : acc));
     setLocalSettings({ ...localSettings, accounts: newAccounts });
   };
-  const handleGlobalSettingChange = (field: keyof Settings, value: any) => {
+  const handleGlobalSettingChange = <K extends keyof Settings>(field: K, value: Settings[K]) => {
     if (!localSettings) return;
     setLocalSettings({ ...localSettings, [field]: value });
   };
@@ -117,6 +123,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
           </>
         )}
         <div className="border-t pt-4 dark:border-gray-700 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Planned hours for month</label>
+            <input
+              type="number"
+              min={0}
+              step={0.25}
+              value={plannedHoursInput}
+              onChange={(e) => {
+                const rawValue = e.target.value;
+                setPlannedHoursInput(rawValue);
+
+                if (rawValue === '') {
+                  handleGlobalSettingChange('plannedHours', 0);
+                  return;
+                }
+
+                const parsedValue = Number(rawValue);
+                if (Number.isFinite(parsedValue) && parsedValue >= 0) {
+                  handleGlobalSettingChange('plannedHours', parsedValue);
+                }
+              }}
+              className="mt-1 block w-full p-2 border rounded-md bg-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300"
+              placeholder="e.g. 160"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Daily plan = (planned month hours - worked hours before selected date, excluding selected date) / remaining working days in month (Mon-Fri, including selected date).
+            </p>
+          </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Display each item on a new line</span>
             <label className="relative inline-flex items-center cursor-pointer">

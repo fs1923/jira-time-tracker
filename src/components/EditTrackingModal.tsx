@@ -2,6 +2,7 @@ import React from 'react';
 import moment from 'moment';
 import Modal from './Modal';
 import TimelogForm from './TimelogForm';
+import type { TimelogFormSaveData } from './TimelogForm';
 import { JiraApiClient } from '../services/jira';
 import { formatSecondsToDuration } from '../utils/time';
 import useDebounceClick from '../hooks/useDebounceClick';
@@ -31,7 +32,7 @@ const EditTrackingModal: React.FC<EditTrackingModalProps> = ({ isOpen, onClose, 
     description: trackingInfo.workDescription || '',
   };
 
-  const handleSave = async (data: any) => {
+  const handleSave = async (data: TimelogFormSaveData) => {
     if (isWaitingForPreviousClickActionRef.current) return;
     onClickActionStarted();
     try {

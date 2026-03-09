@@ -1,6 +1,6 @@
 import React from 'react';
 import moment from 'moment';
-import type { ProcessedTimelog } from '../types/jira';
+import type { ProcessedTimelog, TrackedTicket } from '../types/jira';
 
 interface TimelineTooltipProps {
   log: ProcessedTimelog;
@@ -58,11 +58,27 @@ const TimelineBar: React.FC<TimelineBarProps> = ({ log, minDate, maxDateMinDateD
 };
 
 interface TimelineProps {
-  timelineData: any;
+  timelineData: TimelineData;
   hoveredLogId: string | null;
   setHoveredLogId: (id: string | null) => void;
   handleRowClick: (log: ProcessedTimelog) => void;
 }
+
+type TimelineLog = ProcessedTimelog | TrackedTicket;
+
+export interface TimelineData {
+  allLogs: TimelineLog[];
+  groupedLogs: Record<string, ProcessedTimelog[]>;
+  uniqueTickets: string[];
+  ticketColors: Record<string, string>;
+  minDate: Date;
+  maxDate: Date;
+  maxDateMinDateDuration: number;
+  xAxisTicks: Date[];
+  displayMode: 'grouped' | 'individual';
+}
+
+const isProcessedTimelog = (log: TimelineLog): log is ProcessedTimelog => !log.isTracking;
 
 const Timeline: React.FC<TimelineProps> = ({ timelineData, hoveredLogId, setHoveredLogId, handleRowClick }) => {
   const { allLogs, groupedLogs, uniqueTickets, ticketColors, minDate, maxDateMinDateDuration, xAxisTicks, displayMode } = timelineData;
@@ -77,8 +93,8 @@ const Timeline: React.FC<TimelineProps> = ({ timelineData, hoveredLogId, setHove
                 </div>
               ))
             : allLogs
-                .filter((log: any) => !log.isTracking)
-                .map((log: any) => (
+                .filter(isProcessedTimelog)
+                .map((log) => (
                   <div
                     key={log.id}
                     className="h-16 flex items-center font-medium text-gray-700 dark:text-gray-300 truncate"
@@ -114,19 +130,19 @@ const Timeline: React.FC<TimelineProps> = ({ timelineData, hoveredLogId, setHove
                   </div>
                 ))
               : allLogs
-                  .filter((log: any) => !log.isTracking)
-                  .map((log: any) => (
+                  .filter(isProcessedTimelog)
+                  .map((log) => (
                     <div key={log.id} className="h-16 relative border-b border-gray-200 dark:border-gray-700">
                       <TimelineBar
                         key={log.id}
-                        log={log as ProcessedTimelog}
+                        log={log}
                         minDate={minDate}
                         maxDateMinDateDuration={maxDateMinDateDuration}
                         color={ticketColors[log.issue.key]}
                         isHovered={hoveredLogId === log.id}
                         onMouseEnter={() => setHoveredLogId(log.id)}
                         onMouseLeave={() => setHoveredLogId(null)}
-                        onClick={() => handleRowClick(log as ProcessedTimelog)}
+                        onClick={() => handleRowClick(log)}
                       />
                     </div>
                   ))}

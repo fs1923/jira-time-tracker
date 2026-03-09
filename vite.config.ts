@@ -21,7 +21,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/proxy': {
-        target: (([req]: any) => matchURL(req.originalUrl).origin) as unknown as string,
+        target: (([req]: [{ originalUrl: string }]) => matchURL(req.originalUrl)?.origin ?? 'https://atlassian.net') as unknown as string,
         changeOrigin: true,
         secure: true,
         headers: {
@@ -29,7 +29,8 @@ export default defineConfig({
         },
         rewrite: (path) => {
           const url = matchURL(`https://a.com/${path}`);
-          return url.href.replace(url?.origin, '');
+          if (!url) return path;
+          return url.href.replace(url.origin, '');
         },
       },
     },

@@ -1,6 +1,7 @@
 import React from 'react';
 import Modal from './Modal';
 import TimelogForm from './TimelogForm';
+import type { TimelogFormSaveData } from './TimelogForm';
 import type { ProcessedTimelog } from '../types/jira';
 import { JiraApiClient } from '../services/jira';
 import { formatSecondsToDuration } from '../utils/time';
@@ -27,7 +28,7 @@ const EditTimelogModal: React.FC<EditTimelogModalProps> = ({ isOpen, onClose, lo
     description: log.workDescription || '',
   };
 
-  const handleSave = async (data: any) => {
+  const handleSave = async (data: TimelogFormSaveData) => {
     if (isWaitingForPreviousClickActionRef.current) return;
     onClickActionStarted();
     try {
