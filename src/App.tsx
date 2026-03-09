@@ -610,7 +610,7 @@ export default function App() {
                 </span>
                 by yrambler2001
                 <br />
-                Copyright © 2001-2025 - All Rights Reserved
+                Copyright © 2001-2026 - All Rights Reserved
               </small>
             </footer>
           </div>
