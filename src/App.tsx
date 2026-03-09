@@ -33,32 +33,6 @@ declare global {
 window.moment = moment;
 window._ = _;
 
-const countWorkingDaysInMonth = (date: moment.Moment): number => {
-  const cursor = date.clone().startOf('month');
-  const end = date.clone().endOf('month');
-  let count = 0;
-  while (cursor.isSameOrBefore(end, 'day')) {
-    if (cursor.isoWeekday() <= 5) {
-      count += 1;
-    }
-    cursor.add(1, 'day');
-  }
-  return count;
-};
-
-const countWorkingDaysFromStartOfMonth = (date: moment.Moment): number => {
-  const cursor = date.clone().startOf('month');
-  const end = date.clone().startOf('day');
-  let count = 0;
-  while (cursor.isSameOrBefore(end, 'day')) {
-    if (cursor.isoWeekday() <= 5) {
-      count += 1;
-    }
-    cursor.add(1, 'day');
-  }
-  return count;
-};
-
 const countWorkingDaysFromDateToEndOfMonth = (date: moment.Moment): number => {
   const cursor = date.clone().startOf('day');
   const end = date.clone().endOf('month');
@@ -339,8 +313,6 @@ export default function App() {
     return totalSeconds;
   }, [allAccountsDayLogs, selectedDate, currentTime, state.trackedTickets]);
 
-  const workingDaysInSelectedMonth = useMemo(() => countWorkingDaysInMonth(moment(selectedDate)), [selectedDate]);
-  const workingDaysElapsedInSelectedMonth = useMemo(() => countWorkingDaysFromStartOfMonth(moment(selectedDate)), [selectedDate]);
   const workingDaysRemainingInSelectedMonth = useMemo(() => countWorkingDaysFromDateToEndOfMonth(moment(selectedDate)), [selectedDate]);
   const isSelectedDateWeekend = useMemo(() => moment(selectedDate).isoWeekday() > 5, [selectedDate]);
 
@@ -395,14 +367,6 @@ export default function App() {
     const remainingSeconds = Math.max(plannedMonthSeconds - actualMonthBeforeSelectedDateSeconds, 0);
     return remainingSeconds / workingDaysRemainingInSelectedMonth;
   }, [plannedMonthSeconds, actualMonthBeforeSelectedDateSeconds, workingDaysRemainingInSelectedMonth, isSelectedDateWeekend]);
-
-  const plannedMonthToDateSeconds = useMemo(() => {
-    if (!plannedMonthSeconds || plannedMonthSeconds <= 0) return null;
-    if (workingDaysInSelectedMonth <= 0) return null;
-    if (workingDaysElapsedInSelectedMonth <= 0) return null;
-
-    return (plannedMonthSeconds * workingDaysElapsedInSelectedMonth) / workingDaysInSelectedMonth;
-  }, [plannedMonthSeconds, workingDaysInSelectedMonth, workingDaysElapsedInSelectedMonth]);
 
   const handleRowClick = useCallback((log: ProcessedTimelog) => {
     setEditingLog(log);
@@ -607,7 +571,7 @@ export default function App() {
               <Header
                 totalTrackedTodayInSeconds={totalTrackedTodayInSeconds}
                 plannedDailySeconds={plannedDailySeconds}
-                plannedMonthToDateSeconds={plannedMonthToDateSeconds}
+                plannedMonthSeconds={plannedMonthSeconds}
                 actualMonthToDateSeconds={actualMonthToDateSeconds}
                 selectedDate={selectedDate}
                 setSelectedDate={setSelectedDate}

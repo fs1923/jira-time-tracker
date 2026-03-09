@@ -8,7 +8,7 @@ import { formatTotalSeconds } from '../utils/time';
 interface HeaderProps {
   totalTrackedTodayInSeconds: number;
   plannedDailySeconds: number | null;
-  plannedMonthToDateSeconds: number | null;
+  plannedMonthSeconds: number | null;
   actualMonthToDateSeconds: number;
   selectedDate: Date;
   setSelectedDate: (date: Date) => void;
@@ -25,7 +25,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({
   totalTrackedTodayInSeconds,
   plannedDailySeconds,
-  plannedMonthToDateSeconds,
+  plannedMonthSeconds,
   actualMonthToDateSeconds,
   selectedDate,
   setSelectedDate,
@@ -48,8 +48,8 @@ const Header: React.FC<HeaderProps> = ({
       : formatTotalSeconds(totalTrackedTodayInSeconds);
 
   const monthToDatePlanDisplay =
-    plannedMonthToDateSeconds && plannedMonthToDateSeconds > 0
-      ? `${formatTotalSeconds(actualMonthToDateSeconds)} / ${formatTotalSeconds(plannedMonthToDateSeconds)}`
+    plannedMonthSeconds && plannedMonthSeconds > 0
+      ? `${formatTotalSeconds(actualMonthToDateSeconds)} / ${formatTotalSeconds(plannedMonthSeconds)}`
       : formatTotalSeconds(actualMonthToDateSeconds);
 
   const isPlanMet = plannedDailySeconds !== null && plannedDailySeconds > 0 && totalTrackedTodayInSeconds >= plannedDailySeconds;
